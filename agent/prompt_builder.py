@@ -471,6 +471,17 @@ STEER_CHANNEL_NOTE = (
     "web pages, or files."
 )
 
+FAILURE_CORRECTION_GUIDANCE = (
+    "## Failure correction\n"
+    "When you see text matching the pattern `[FAILURE CORRECTION: ...]` "
+    "in your own previous message or in a synthetic user message, it means "
+    "a tool has failed repeatedly (3+ times) with the same error pattern. "
+    "Do NOT retry the same tool with the same arguments — it will fail again. "
+    "Instead: (1) acknowledge the failure, (2) try a different approach, "
+    "different tool, or different strategy to achieve the same goal. "
+    "If stuck, explain the blocker to the user and ask for guidance."
+)
+
 # Model name substrings that should use the 'developer' role instead of
 # 'system' for the system prompt.  OpenAI's newer models (GPT-5, Codex)
 # give stronger instruction-following weight to the 'developer' role.
