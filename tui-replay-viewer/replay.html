@@ -1,0 +1,1816 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TUI Replay</title>
+    <style>
+:root {
+  color: #1e242c;
+  background: #f7f6f1;
+  --ui-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono-font: "SFMono-Regular", "SF Mono", "Cascadia Mono", "Menlo", "Consolas", monospace;
+  font-family: var(--ui-font);
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, #fbfaf7 0%, #f2f0e9 100%);
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  gap: 16px;
+  padding: 22px clamp(16px, 3vw, 42px);
+}
+
+.topbar {
+  position: relative;
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(140px, 220px);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(190, 184, 172, 0.8);
+  background: rgba(246, 244, 240, 0.94);
+  backdrop-filter: blur(18px);
+  padding: 3px 10px;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 2px;
+}
+
+.traffic-light {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.traffic-light.close {
+  background: #ff5f57;
+}
+
+.traffic-light.minimize {
+  background: #ffbd2e;
+}
+
+.traffic-light.zoom {
+  background: #28c840;
+}
+
+.title-group {
+  min-width: 0;
+  text-align: center;
+}
+
+h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+#trace-meta {
+  min-height: 0;
+  margin: 0;
+  color: #5f6873;
+  font-size: 11px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+select {
+  min-height: 24px;
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid rgba(212, 208, 198, 0.8);
+  border-radius: 5px;
+  background: rgba(255, 253, 250, 0.82);
+  color: #20252d;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.trace-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.trace-trigger {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(196, 190, 180, 0.78);
+  border-radius: 999px;
+  background: rgba(255, 253, 249, 0.72);
+  color: #303742;
+  padding: 0 8px 0 10px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.trace-trigger::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid #6b7280;
+  border-bottom: 1.5px solid #6b7280;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.trace-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-trigger:hover,
+.trace-trigger:focus-visible,
+.trace-trigger[aria-expanded="true"] {
+  border-color: rgba(117, 112, 104, 0.8);
+  background: rgba(255, 253, 249, 0.92);
+  outline: none;
+}
+
+.trace-picker.single .trace-trigger {
+  grid-template-columns: minmax(0, 1fr);
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.trace-picker.single .trace-trigger::after {
+  display: none;
+}
+
+.trace-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: min(360px, 72vw);
+  max-height: 260px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid rgba(190, 184, 172, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 253, 249, 0.98);
+  box-shadow: 0 14px 34px rgba(23, 28, 35, 0.18);
+}
+
+.trace-option {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #303742;
+  padding: 7px 8px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.trace-option:hover,
+.trace-option:focus-visible {
+  background: #ebe7dd;
+  outline: none;
+}
+
+.trace-option.active {
+  background: #1f252e;
+  color: #ffffff;
+}
+
+.stage {
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 8px 0 18px;
+}
+
+.terminal-window {
+  --cols: 80;
+  --rows: 24;
+  --cell-width: 10px;
+  --line-height: 20px;
+  --font-size: 15px;
+  --window-width: calc((var(--cols) * var(--cell-width)) + 32px);
+  --window-height: calc(32px + (var(--rows) * var(--line-height)) + 32px);
+  width: min(var(--window-width), 100%);
+  height: min(var(--window-height), 100%);
+  min-width: min(100%, 420px);
+  max-height: 100%;
+  overflow: hidden;
+  border: 1px solid #252a33;
+  border-radius: 8px;
+  background: #101318;
+  box-shadow: 0 16px 40px rgba(23, 28, 35, 0.18);
+}
+
+.terminal {
+  width: 100%;
+  height: calc(100% - 32px);
+  min-height: 0;
+  overflow: auto;
+  background: #101318;
+  color: #d4d4d8;
+  padding: 16px;
+}
+
+.terminal-line {
+  width: calc(var(--cols) * var(--cell-width));
+  height: var(--line-height);
+  white-space: pre;
+  font-family: var(--mono-font);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  letter-spacing: 0;
+}
+
+.terminal-line span {
+  display: inline-block;
+  height: var(--line-height);
+}
+
+.cursor {
+  outline: 1px solid #f8fafc;
+  outline-offset: -1px;
+  background: #f8fafc !important;
+  color: #101318 !important;
+  animation: cursor-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes cursor-blink {
+  0%,
+  52% {
+    opacity: 1;
+  }
+
+  53%,
+  100% {
+    opacity: 0.22;
+  }
+}
+
+.controls {
+  display: grid;
+  gap: 8px;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.scrubber-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+#speed-select {
+  flex: 0 0 64px;
+  width: 64px;
+  min-width: 64px;
+  max-width: 64px;
+  min-height: 28px;
+  padding: 0 6px;
+}
+
+.icon-button {
+  width: 38px;
+  height: 36px;
+  border: 1px solid #d4d0c6;
+  border-radius: 6px;
+  background: #fffdfa;
+  color: #1f252e;
+  cursor: pointer;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  border-color: #999286;
+}
+
+.icon-button.primary {
+  background: #1f252e;
+  border-color: #1f252e;
+  color: #ffffff;
+}
+
+.scrubber {
+  position: relative;
+  min-width: 0;
+  height: 32px;
+  display: grid;
+  align-items: center;
+}
+
+.scrubber-track {
+  position: absolute;
+  z-index: 3;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  height: 8px;
+  overflow: visible;
+  border-radius: 999px;
+  background: #d8d4ca;
+  transform: translateY(-50%);
+  box-shadow: inset 0 0 0 1px rgba(31, 37, 46, 0.08);
+  pointer-events: none;
+}
+
+.frame-progress {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: #1f252e;
+  transition-property: width;
+  transition-duration: 160ms;
+  transition-timing-function: linear;
+  will-change: width;
+  pointer-events: none;
+}
+
+#frame-range {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.frame-notches {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.frame-notch {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 10px;
+  border-radius: 999px;
+  background: #8f968f;
+  transform: translate(-50%, -50%);
+  opacity: 0.65;
+}
+
+.frame-notch.active {
+  width: 3px;
+  height: 14px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #1f252e;
+  opacity: 1;
+}
+
+.annotation-marker {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fffdfa;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(31, 37, 46, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.annotation-marker:hover,
+.annotation-marker:focus,
+.annotation-marker:focus-visible {
+  z-index: 4;
+  outline: none;
+  box-shadow: 0 0 0 2px #fffdfa, 0 0 0 4px rgba(31, 37, 46, 0.42);
+}
+
+.annotation-marker::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  width: max-content;
+  max-width: min(360px, 72vw);
+  transform: translateX(-50%);
+  border: 1px solid rgba(31, 37, 46, 0.16);
+  border-radius: 7px;
+  background: rgba(31, 37, 46, 0.96);
+  color: #fffdfa;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-line;
+  box-shadow: 0 12px 28px rgba(23, 28, 35, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.annotation-marker:hover::after,
+.annotation-marker:focus::after,
+.annotation-marker:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+#frame-counter {
+  min-width: 112px;
+  text-align: right;
+  color: #4e5661;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.timeline {
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  padding: 0 0 8px;
+  scrollbar-gutter: stable both-edges;
+  scroll-snap-type: x proximity;
+}
+
+#timeline {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+  min-width: max-content;
+  width: max-content;
+  padding: 0 2px;
+}
+
+.thumb {
+  position: relative;
+  width: 140px;
+  height: 82px;
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  overflow: hidden;
+  border: 1px solid #d8d4ca;
+  border-radius: 6px;
+  background: #fffdfa;
+  color: #303742;
+  cursor: pointer;
+  padding: 6px;
+  text-align: left;
+}
+
+.thumb.active {
+  border-color: #1f252e;
+  box-shadow: inset 0 0 0 1px #1f252e;
+}
+
+.thumb.has-annotation {
+  border-color: #b7c8bd;
+}
+
+.thumb:hover,
+.thumb:focus,
+.thumb:focus-visible {
+  border-color: #999286;
+  outline: none;
+}
+
+.thumb.has-annotation::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #2f7d62;
+  box-shadow: 0 0 0 2px #fffdfa;
+}
+
+.annotation-thumb {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 4px;
+  border-color: #a9c8b8;
+  background: #f4faf6;
+}
+
+.annotation-thumb:hover,
+.annotation-thumb:focus,
+.annotation-thumb:focus-visible {
+  border-color: #2f7d62;
+  box-shadow: inset 0 0 0 1px rgba(47, 125, 98, 0.42);
+}
+
+.annotation-thumb::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  inset: 6px;
+  z-index: 5;
+  overflow: hidden;
+  border: 1px solid rgba(47, 125, 98, 0.2);
+  border-radius: 5px;
+  background: rgba(31, 37, 46, 0.96);
+  color: #fffdfa;
+  padding: 7px;
+  font-size: 10px;
+  line-height: 1.28;
+  text-align: left;
+  white-space: pre-line;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.annotation-thumb:hover::after,
+.annotation-thumb:focus::after,
+.annotation-thumb:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.thumb-time {
+  display: block;
+  color: #69717c;
+  font-size: 11px;
+  line-height: 1;
+  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.thumb-annotation {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e3efe8;
+  color: #244c3d;
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb-annotation-kind {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  color: #ffffff;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb-annotation-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #1f252e;
+  font-size: 12px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb-annotation-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: #4e5661;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thumb pre {
+  margin: 0;
+  overflow: hidden;
+  max-height: 54px;
+  color: #1f252e;
+  font-family: var(--mono-font);
+  font-size: 9px;
+  line-height: 1.15;
+  white-space: pre;
+}
+
+.details {
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  gap: 8px;
+  color: #303742;
+  font-size: 13px;
+}
+
+.details-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.frame-context {
+  padding-bottom: 2px;
+}
+
+.details code {
+  color: #20252d;
+  background: #ebe7dd;
+  border-radius: 4px;
+  padding: 2px 5px;
+}
+
+.expectations,
+.annotations {
+  display: grid;
+  gap: 6px;
+}
+
+.annotation-detail {
+  display: grid;
+  gap: 5px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(216, 212, 202, 0.72);
+}
+
+.annotation-detail:first-of-type {
+  border-top: 0;
+}
+
+.annotation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+}
+
+.annotation-detail strong {
+  color: #1f252e;
+}
+
+.annotation-description,
+.annotation-detail span {
+  color: #4e5661;
+}
+
+.annotation-kind {
+  border-radius: 999px;
+  background: #e3efe8;
+  color: #244c3d !important;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.annotation-evidence {
+  display: grid;
+  gap: 6px;
+}
+
+.annotation-assertion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: 5px;
+  background: #f0ede5;
+  padding: 5px 7px;
+}
+
+.annotation-assertion.passed {
+  background: #e3efe8;
+}
+
+.annotation-assertion.failed {
+  background: #f6e5df;
+}
+
+.annotation-attachment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 8px;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  color: #1f252e;
+  text-decoration: none;
+}
+
+.annotation-attachment:hover,
+.annotation-attachment:focus-visible {
+  text-decoration: underline;
+}
+
+.annotation-attachment img {
+  grid-row: span 2;
+  max-width: 180px;
+  max-height: 120px;
+  border: 1px solid #d8d4ca;
+  border-radius: 5px;
+  background: #fffdfa;
+  object-fit: contain;
+}
+
+.annotation-attachment small {
+  color: #69717c;
+}
+
+.details-heading {
+  color: #4e5661;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.expectation {
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: var(--mono-font);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.empty {
+  color: #69717c;
+}
+
+@media (max-width: 720px) {
+  .app {
+    grid-template-rows: minmax(0, 1fr) auto auto auto;
+  }
+
+  .topbar {
+    grid-template-columns: 58px minmax(0, 1fr) minmax(110px, 150px);
+    grid-template-areas: "controls title select";
+    align-items: center;
+  }
+
+  .window-controls {
+    grid-area: controls;
+  }
+
+  .title-group {
+    grid-area: title;
+    text-align: left;
+  }
+
+  .trace-picker {
+    grid-area: select;
+    max-width: 100%;
+  }
+
+  .scrubber-row {
+    grid-template-columns: 1fr;
+  }
+
+  .transport-row {
+    justify-content: flex-start;
+  }
+
+  #frame-counter {
+    text-align: left;
+  }
+}
+</style>
+  </head>
+  <body>
+    <main class="app">
+      <section id="stage" class="stage" aria-label="Terminal replay">
+        <div id="terminal-window" class="terminal-window">
+          <header class="topbar" aria-label="Viewer toolbar">
+            <div class="window-controls" aria-hidden="true">
+              <span class="traffic-light close"></span>
+              <span class="traffic-light minimize"></span>
+              <span class="traffic-light zoom"></span>
+            </div>
+            <div class="title-group">
+              <h1>TUI Replay</h1>
+              <p id="trace-meta"></p>
+            </div>
+            <div id="trace-picker" class="trace-picker">
+              <button id="trace-trigger" class="trace-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                <span id="trace-trigger-label"></span>
+              </button>
+              <div id="trace-menu" class="trace-menu" role="listbox" hidden></div>
+            </div>
+          </header>
+          <div id="terminal" class="terminal" role="img" aria-label="Terminal frame"></div>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Playback controls">
+        <div class="scrubber-row">
+          <div class="scrubber">
+            <div class="scrubber-track">
+              <div id="frame-progress" class="frame-progress"></div>
+              <div id="frame-notches" class="frame-notches"></div>
+            </div>
+            <input id="frame-range" type="range" min="0" max="0" value="0" aria-label="Frame">
+          </div>
+          <output id="frame-counter"></output>
+        </div>
+        <div class="transport-row">
+          <button id="previous-frame" class="icon-button" type="button" aria-label="Previous frame">&#9198;</button>
+          <button id="play-toggle" class="icon-button primary" type="button" aria-label="Play">&#9654;</button>
+          <button id="next-frame" class="icon-button" type="button" aria-label="Next frame">&#9197;</button>
+          <select id="speed-select" aria-label="Playback speed">
+            <option value="0.25">0.25x</option>
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+            <option value="8">8x</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="timeline" aria-label="Frame previews">
+        <div id="timeline"></div>
+      </section>
+
+      <section id="details" class="details" aria-label="Trace details"></section>
+    </main>
+    <script type="module">
+/* tui-replay selectors (inlined) */
+function annotationsForFrame(trace, frameIndex) {
+    return trace.annotations.filter((annotation) => annotation.frameIndex === frameIndex);
+}
+function frameIndexAtTime(frames, traceTime) {
+    let low = 0;
+    let high = frames.length - 1;
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        if (frames[mid].time <= traceTime) {
+            low = mid + 1;
+        }
+        else {
+            high = mid - 1;
+        }
+    }
+    return clamp(high, 0, Math.max(0, frames.length - 1));
+}
+function timelineFrames(frames, selectedIndex, maxFrames = 260) {
+    if (frames.length <= maxFrames) {
+        return frames;
+    }
+    const sampled = new Map();
+    const step = Math.ceil(frames.length / maxFrames);
+    for (let i = 0; i < frames.length; i += step) {
+        sampled.set(i, frames[i]);
+    }
+    sampled.set(0, frames[0]);
+    sampled.set(selectedIndex, frames[selectedIndex]);
+    sampled.set(frames.length - 1, frames.at(-1));
+    return [...sampled.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([, frame]) => frame);
+}
+function timelineItems(trace, selectedIndex, maxFrames = Number.POSITIVE_INFINITY) {
+    const frameItems = timelineFrames(trace.frames, selectedIndex, maxFrames).map((frame) => ({
+        type: "frame",
+        id: `frame-${frame.index}`,
+        timeMs: frame.time,
+        frame
+    }));
+    const annotationItems = trace.annotations.map((annotation) => ({
+        type: "annotation",
+        id: `annotation-${annotation.id}`,
+        timeMs: annotation.timeMs,
+        annotation
+    }));
+    return [...frameItems, ...annotationItems].sort((a, b) => {
+        if (a.timeMs !== b.timeMs) {
+            return a.timeMs - b.timeMs;
+        }
+        if (a.type !== b.type) {
+            return a.type === "frame" ? -1 : 1;
+        }
+        return a.id.localeCompare(b.id);
+    });
+}
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+/* trace model (embedded at bundle time) */
+const __INLINE_MODEL__ = JSON.parse("{\"generatedAt\":\"2026-06-12T18:51:20.030Z\",\"traces\":[{\"summary\":{\"id\":\"trace-0\",\"filePath\":\"/home/ari/src/hermes-e2e/e2e/tui-traces/test-hermes.test.ts-Hermes-CLI-E2E-hermes-command-is-available-and-shows-version\",\"fileName\":\"test-hermes.test.ts-Hermes-CLI-E2E-hermes-command-is-available-and-shows-version\",\"testTitle\":\"Hermes CLI E2E > hermes command is available and shows version\",\"attempt\":0,\"durationMs\":90,\"frameCount\":3,\"rows\":30,\"cols\":80},\"frames\":[{\"index\":0,\"eventIndex\":-1,\"time\":0,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"\"},{\"index\":1,\"eventIndex\":2,\"time\":38,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> \"},{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\">\"},{\"index\":2,\"eventIndex\":3,\"time\":90,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> hermes --version\"}],[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"> hermes --version\"}],\"annotations\":[],\"details\":{\"snapshotNames\":[],\"expectations\":[]}},{\"summary\":{\"id\":\"trace-1\",\"filePath\":\"/home/ari/src/hermes-e2e/e2e/tui-traces/test-hermes.test.ts-Hermes-CLI-E2E-hermes-setup-wizard-starts-interactively\",\"fileName\":\"test-hermes.test.ts-Hermes-CLI-E2E-hermes-setup-wizard-starts-interactively\",\"testTitle\":\"Hermes CLI E2E > hermes setup wizard starts interactively\",\"attempt\":0,\"durationMs\":113,\"frameCount\":29,\"rows\":30,\"cols\":80},\"frames\":[{\"index\":0,\"eventIndex\":-1,\"time\":0,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"\"},{\"index\":1,\"eventIndex\":2,\"time\":8,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> \"},{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\">\"},{\"index\":2,\"eventIndex\":3,\"time\":54,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> hermes setup\"}],[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"> hermes setup\"},{\"index\":3,\"eventIndex\":4,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> hermes setup\"}],[{\"text\":\"^CTraceback (most recent call last):\"}],[{\"text\":\"  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\"}],[{\"text\":\"    from hermes_cli.main import main\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\"}],[{\"text\":\"    _suppress_mouse_residue_early()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"> hermes setup\\n^CTraceback (most recent call last):\\n  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\\n    from hermes_cli.main import main\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\\n    _suppress_mouse_residue_early()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"},{\"index\":4,\"eventIndex\":5,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> hermes setup\"}],[{\"text\":\"^CTraceback (most recent call last):\"}],[{\"text\":\"  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\"}],[{\"text\":\"    from hermes_cli.main import main\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\"}],[{\"text\":\"    _suppress_mouse_residue_early()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"> hermes setup\\n^CTraceback (most recent call last):\\n  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\\n    from hermes_cli.main import main\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\\n    _suppress_mouse_residue_early()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\"},{\"index\":5,\"eventIndex\":6,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"> hermes setup\"}],[{\"text\":\"^CTraceback (most recent call last):\"}],[{\"text\":\"  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\"}],[{\"text\":\"    from hermes_cli.main import main\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\"}],[{\"text\":\"    _suppress_mouse_residue_early()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\" \",\"cursor\":true}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}],[{\"text\":\" \"}]],\"plainText\":\"> hermes setup\\n^CTraceback (most recent call last):\\n  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\\n    from hermes_cli.main import main\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\\n    _suppress_mouse_residue_early()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\"},{\"index\":6,\"eventIndex\":7,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\"}],[{\"text\":\"    from hermes_cli.main import main\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\"}],[{\"text\":\"    _suppress_mouse_residue_early()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"  File \\\"/home/ari/src/hermes-e2e/.venv/bin/hermes\\\", line 4, in <module>\\n    from hermes_cli.main import main\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\\n    _suppress_mouse_residue_early()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"},{\"index\":7,\"eventIndex\":8,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    from hermes_cli.main import main\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\"}],[{\"text\":\"    _suppress_mouse_residue_early()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    from hermes_cli.main import main\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 190, in <module>\\n    _suppress_mouse_residue_early()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\"},{\"index\":8,\"eventIndex\":9,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    _suppress_mouse_residue_early()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    _suppress_mouse_residue_early()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"},{\"index\":9,\"eventIndex\":10,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\"}],[{\"text\":\"y\"}],[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 171, in _suppress_mouse_residue_earl\\ny\\n    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\"},{\"index\":10,\"eventIndex\":11,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    if not _wants_tui_early():\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\"}],[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    if not _wants_tui_early():\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 157, in _wants_tui_early\\n    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"},{\"index\":11,\"eventIndex\":12,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    return _config_default_interface_early() == \\\"tui\\\"\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    return _config_default_interface_early() == \\\"tui\\\"\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"},{\"index\":12,\"eventIndex\":13,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\"}],[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/hermes_cli/main.py\\\", line 133, in _config_default_interface_ea\\nrly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"},{\"index\":13,\"eventIndex\":14,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"rly\"}],[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"rly\\n    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"},{\"index\":14,\"eventIndex\":15,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    raw = _yaml_iface.safe_load(_f) or {}\"}],[{\"text\":\"          ^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    raw = _yaml_iface.safe_load(_f) or {}\\n          ^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\"},{\"index\":15,\"eventIndex\":16,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\"}],[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\".12/site-packages/yaml/__init__.py\\\", line 125, in safe_load\\n    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"},{\"index\":16,\"eventIndex\":17,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    return load(stream, SafeLoader)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    return load(stream, SafeLoader)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\"},{\"index\":17,\"eventIndex\":18,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\"}],[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\".12/site-packages/yaml/__init__.py\\\", line 81, in load\\n    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"},{\"index\":18,\"eventIndex\":19,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    return loader.get_single_data()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    return loader.get_single_data()\\n           ^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\"},{\"index\":19,\"eventIndex\":20,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\"}],[{\"text\":\"    node = self.get_single_node()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\".12/site-packages/yaml/constructor.py\\\", line 49, in get_single_data\\n    node = self.get_single_node()\\n           ^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\"},{\"index\":20,\"eventIndex\":21,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\"}],[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\".12/site-packages/yaml/composer.py\\\", line 36, in get_single_node\\n    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"},{\"index\":21,\"eventIndex\":22,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    document = self.compose_document()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    document = self.compose_document()\\n               ^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\"},{\"index\":22,\"eventIndex\":23,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\"}],[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\".12/site-packages/yaml/composer.py\\\", line 55, in compose_document\\n    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"},{\"index\":23,\"eventIndex\":24,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"    node = self.compose_node(None, None)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\"    self.fetch_more_tokens()\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"    node = self.compose_node(None, None)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\\n    self.fetch_more_tokens()\"},{\"index\":24,\"eventIndex\":25,\"time\":105,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\"    self.fetch_more_tokens()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\\n    self.fetch_more_tokens()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\"},{\"index\":25,\"eventIndex\":26,\"time\":106,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\"}],[{\"text\":\"    item_value = self.compose_node(node, item_key)\"}],[{\"text\":\"                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\"}],[{\"text\":\"    node = self.compose_mapping_node(anchor)\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\"}],[{\"text\":\"    while not self.check_event(MappingEndEvent):\"}],[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\"    self.fetch_more_tokens()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\"}],[{\"text\":\"    return self.fetch_plain()\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\".12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 133, in compose_mapping_node\\n    item_value = self.compose_node(node, item_key)\\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 84, in compose_node\\n    node = self.compose_mapping_node(anchor)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/composer.py\\\", line 127, in compose_mapping_node\\n    while not self.check_event(MappingEndEvent):\\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\\n    self.fetch_more_tokens()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\\n    return self.fetch_plain()\"},{\"index\":26,\"eventIndex\":27,\"time\":108,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\"    self.fetch_more_tokens()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\"}],[{\"text\":\"    return self.fetch_plain()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 679, in fetch_plain\"}],[{\"text\":\"    self.tokens.append(self.scan_plain())\"}],[{\"text\":\"                       ^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 1304, in scan_plain\"}],[{\"text\":\"    end_mark = self.get_mark()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/reader.py\\\", line 119, in get_mark\"}],[{\"text\":\"    return Mark(self.name, self.index, self.line, self.column,\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"KeyboardInterrupt\"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\\n    self.fetch_more_tokens()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\\n    return self.fetch_plain()\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 679, in fetch_plain\\n    self.tokens.append(self.scan_plain())\\n                       ^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 1304, in scan_plain\\n    end_mark = self.get_mark()\\n               ^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/reader.py\\\", line 119, in get_mark\\n    return Mark(self.name, self.index, self.line, self.column,\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\nKeyboardInterrupt\"},{\"index\":27,\"eventIndex\":28,\"time\":113,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\"    self.fetch_more_tokens()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\"}],[{\"text\":\"    return self.fetch_plain()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 679, in fetch_plain\"}],[{\"text\":\"    self.tokens.append(self.scan_plain())\"}],[{\"text\":\"                       ^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 1304, in scan_plain\"}],[{\"text\":\"    end_mark = self.get_mark()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/reader.py\\\", line 119, in get_mark\"}],[{\"text\":\"    return Mark(self.name, self.index, self.line, self.column,\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"KeyboardInterrupt\"}],[{\"text\":\" \"}],[{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\\n    self.fetch_more_tokens()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\\n    return self.fetch_plain()\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 679, in fetch_plain\\n    self.tokens.append(self.scan_plain())\\n                       ^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 1304, in scan_plain\\n    end_mark = self.get_mark()\\n               ^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/reader.py\\\", line 119, in get_mark\\n    return Mark(self.name, self.index, self.line, self.column,\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\nKeyboardInterrupt\"},{\"index\":28,\"eventIndex\":29,\"time\":113,\"rows\":30,\"cols\":80,\"lines\":[[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 98, in check_event\"}],[{\"text\":\"    self.current_event = self.state()\"}],[{\"text\":\"                         ^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\"}],[{\"text\":\"    if self.check_token(KeyToken):\"}],[{\"text\":\"       ^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 116, in check_token\"}],[{\"text\":\"    self.fetch_more_tokens()\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\"}],[{\"text\":\"    return self.fetch_plain()\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 679, in fetch_plain\"}],[{\"text\":\"    self.tokens.append(self.scan_plain())\"}],[{\"text\":\"                       ^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/scanner.py\\\", line 1304, in scan_plain\"}],[{\"text\":\"    end_mark = self.get_mark()\"}],[{\"text\":\"               ^^^^^^^^^^^^^^^\"}],[{\"text\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\"}],[{\"text\":\".12/site-packages/yaml/reader.py\\\", line 119, in get_mark\"}],[{\"text\":\"    return Mark(self.name, self.index, self.line, self.column,\"}],[{\"text\":\"           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\"}],[{\"text\":\"KeyboardInterrupt\"}],[{\"text\":\" \"}],[{\"text\":\"> \"},{\"text\":\" \",\"cursor\":true}]],\"plainText\":\"  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 98, in check_event\\n    self.current_event = self.state()\\n                         ^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/parser.py\\\", line 428, in parse_block_mapping_key\\n    if self.check_token(KeyToken):\\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 116, in check_token\\n    self.fetch_more_tokens()\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 255, in fetch_more_tokens\\n    return self.fetch_plain()\\n           ^^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 679, in fetch_plain\\n    self.tokens.append(self.scan_plain())\\n                       ^^^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/scanner.py\\\", line 1304, in scan_plain\\n    end_mark = self.get_mark()\\n               ^^^^^^^^^^^^^^^\\n  File \\\"/nix/store/lnqa11hhjwlglxz59mkpiyjc1n9r6rvy-hermes-agent-env/lib/python3\\n.12/site-packages/yaml/reader.py\\\", line 119, in get_mark\\n    return Mark(self.name, self.index, self.line, self.column,\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\nKeyboardInterrupt\\n\\n>\"}],\"annotations\":[],\"details\":{\"snapshotNames\":[],\"expectations\":[]}}]}");
+
+/* tui-replay client (patched for static mode) */
+const state = {
+    model: undefined,
+    modelSignature: undefined,
+    traceIndex: 0,
+    frameIndex: 0,
+    followTail: true,
+    speed: 1,
+    playing: false,
+    animationFrame: undefined,
+    playbackAnchorRealTime: 0,
+    playbackAnchorTraceTime: 0
+};
+let pageScrollBeforeInteraction;
+let pollingModel = false;
+const sourceQueryParam = "source";
+const stage = requiredElement("stage");
+const terminalWindow = requiredElement("terminal-window");
+const terminal = requiredElement("terminal");
+const traceMeta = requiredElement("trace-meta");
+const tracePicker = requiredElement("trace-picker");
+const traceTrigger = requiredElement("trace-trigger");
+const traceTriggerLabel = requiredElement("trace-trigger-label");
+const traceMenu = requiredElement("trace-menu");
+const previousFrame = requiredElement("previous-frame");
+const playToggle = requiredElement("play-toggle");
+const nextFrame = requiredElement("next-frame");
+const frameRange = requiredElement("frame-range");
+const frameProgress = requiredElement("frame-progress");
+const frameNotches = requiredElement("frame-notches");
+const speedSelect = requiredElement("speed-select");
+const frameCounter = requiredElement("frame-counter");
+const timeline = requiredElement("timeline");
+const details = requiredElement("details");
+void init();
+async function init() {
+    if ("scrollRestoration" in window.history) {
+        window.history.scrollRestoration = "manual";
+    }
+    window.scrollTo(0, 0);
+    state.model = await fetchPreviewModel();
+    state.modelSignature = modelSignature(state.model);
+    applyTraceSelectionFromUrl();
+    writeSelectedTraceToUrl("replace");
+    renderTraceOptions();
+    render();
+    bindEvents();
+    connectLiveUpdates();
+}
+function bindEvents() {
+    [traceTrigger, previousFrame, playToggle, nextFrame, frameRange, speedSelect].forEach((control) => {
+        control.addEventListener("pointerdown", rememberPageScroll);
+        control.addEventListener("keydown", rememberPageScroll);
+    });
+    traceTrigger.addEventListener("click", () => {
+        setTraceMenuOpen(traceMenu.hidden);
+        restorePageScroll();
+    });
+    traceTrigger.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setTraceMenuOpen(true);
+            traceMenu.querySelector(".trace-option.active")?.focus();
+        }
+    });
+    document.addEventListener("click", (event) => {
+        if (!tracePicker.contains(event.target)) {
+            setTraceMenuOpen(false);
+        }
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+            setTraceMenuOpen(false);
+            traceTrigger.focus();
+        }
+    });
+    previousFrame.addEventListener("click", () => {
+        stopPlayback();
+        setFrame(state.frameIndex - 1);
+    });
+    nextFrame.addEventListener("click", () => {
+        stopPlayback();
+        setFrame(state.frameIndex + 1);
+    });
+    playToggle.addEventListener("click", () => {
+        if (state.playing) {
+            stopPlayback();
+            renderControls(currentTrace());
+        }
+        else {
+            startPlayback();
+        }
+        restorePageScroll();
+    });
+    frameRange.addEventListener("input", () => {
+        stopPlayback();
+        setFrame(Number(frameRange.value));
+    });
+    speedSelect.addEventListener("change", () => {
+        const now = performance.now();
+        const traceTime = state.playing ? currentPlaybackTraceTime(now) : undefined;
+        state.speed = Number(speedSelect.value);
+        if (state.playing && traceTime != null) {
+            anchorPlayback(traceTime, now);
+            const trace = currentTrace();
+            if (trace) {
+                renderPlaybackAt(trace, traceTime);
+            }
+        }
+    });
+    window.addEventListener("resize", () => {
+        const trace = currentTrace();
+        if (trace) {
+            renderTerminal(trace.frames[state.frameIndex]);
+        }
+    });
+    window.addEventListener("popstate", () => {
+        if (applyTraceSelectionFromUrl()) {
+            stopPlayback();
+            state.frameIndex = 0;
+            state.followTail = true;
+            render();
+        }
+    });
+}
+function render() {
+    const trace = currentTrace();
+    if (!trace) {
+        terminal.textContent = "No traces loaded.";
+        return;
+    }
+    state.frameIndex = clamp(state.frameIndex, 0, trace.frames.length - 1);
+    renderTraceMeta(trace);
+    renderTerminal(trace.frames[state.frameIndex]);
+    renderControls(trace);
+    renderFrameNotches(trace);
+    renderTimeline(trace);
+    renderDetails(trace.details, trace);
+}
+function connectLiveUpdates() {
+    /* static mode: no live updates */
+}
+function startPollingLiveUpdates() {
+    window.setInterval(() => {
+        if (pollingModel) {
+            return;
+        }
+        pollingModel = true;
+        void fetchPreviewModel()
+            .then(applyModelUpdate)
+            .catch(() => {
+            // Keep the last good model while a trace file is mid-write.
+        })
+            .finally(() => {
+            pollingModel = false;
+        });
+    }, 1000);
+}
+async function fetchPreviewModel() {
+    return __INLINE_MODEL__;
+}
+function applyModelUpdate(model) {
+    const nextSignature = modelSignature(model);
+    if (nextSignature === state.modelSignature) {
+        return;
+    }
+    const previousTraces = state.model?.traces ?? [];
+    const previousTrace = currentTrace();
+    const previousKey = previousTrace ? traceKey(previousTrace) : undefined;
+    const previousTime = previousTrace?.frames[state.frameIndex]?.time ?? 0;
+    const wasAtEnd = previousTrace ? state.frameIndex >= previousTrace.frames.length - 1 : true;
+    const playbackTime = state.playing ? currentPlaybackTraceTime(performance.now()) : previousTime;
+    state.model = model;
+    state.modelSignature = nextSignature;
+    if (previousKey) {
+        const nextIndex = model.traces.findIndex((trace) => traceKey(trace) === previousKey);
+        state.traceIndex = nextIndex >= 0 ? nextIndex : clamp(state.traceIndex, 0, Math.max(0, model.traces.length - 1));
+    }
+    else if (previousTraces.length === 0 && model.traces.length > 0) {
+        state.traceIndex = 0;
+        applyTraceSelectionFromUrl();
+    }
+    const trace = currentTrace();
+    if (trace) {
+        if (state.playing) {
+            const now = performance.now();
+            const traceTime = clamp(playbackTime, 0, trace.summary.durationMs);
+            state.frameIndex = frameIndexAtTime(trace.frames, traceTime);
+            anchorPlayback(traceTime, now);
+        }
+        else if (state.followTail || wasAtEnd) {
+            state.frameIndex = trace.frames.length - 1;
+        }
+        else {
+            state.frameIndex = frameIndexAtTime(trace.frames, previousTime);
+        }
+    }
+    renderTraceOptions();
+    render();
+    writeSelectedTraceToUrl("replace");
+}
+function renderTraceOptions() {
+    const traces = state.model?.traces ?? [];
+    traceMenu.innerHTML = "";
+    tracePicker.classList.toggle("single", traces.length <= 1);
+    traces.forEach((trace, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = `trace-option${index === state.traceIndex ? " active" : ""}`;
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(index === state.traceIndex));
+        option.textContent = trace.summary.testTitle;
+        option.addEventListener("click", () => selectTrace(index));
+        traceMenu.append(option);
+    });
+}
+function selectTrace(index) {
+    stopPlayback();
+    state.traceIndex = index;
+    state.frameIndex = 0;
+    state.followTail = true;
+    setTraceMenuOpen(false);
+    writeSelectedTraceToUrl("push");
+    render();
+    restorePageScroll();
+}
+function setTraceMenuOpen(open) {
+    if (open && (state.model?.traces.length ?? 0) <= 1) {
+        open = false;
+    }
+    traceMenu.hidden = !open;
+    traceTrigger.setAttribute("aria-expanded", String(open));
+}
+function renderTraceMeta(trace) {
+    const summary = trace.summary;
+    const source = summary.testFile
+        ? `${compactPath(summary.testFile)}${summary.sourceLine ? `:${summary.sourceLine}` : ""}`
+        : summary.fileName;
+    traceMeta.textContent = `${source} | ${summary.frameCount} frames | ${formatDuration(summary.durationMs)} | ${summary.cols}x${summary.rows}`;
+    traceTriggerLabel.textContent = summary.testTitle;
+    traceTrigger.title = summary.testTitle;
+    traceMenu.querySelectorAll(".trace-option").forEach((option, index) => {
+        option.classList.toggle("active", index === state.traceIndex);
+        option.setAttribute("aria-selected", String(index === state.traceIndex));
+    });
+}
+function renderTerminal(frame) {
+    const sizing = terminalLayout(frame);
+    terminalWindow.style.setProperty("--cols", String(frame.cols));
+    terminalWindow.style.setProperty("--rows", String(frame.rows));
+    terminalWindow.style.setProperty("--cell-width", `${sizing.cellWidth}px`);
+    terminalWindow.style.setProperty("--line-height", `${sizing.lineHeight}px`);
+    terminalWindow.style.setProperty("--font-size", `${sizing.fontSize}px`);
+    terminalWindow.style.setProperty("--window-width", `${sizing.windowWidth}px`);
+    terminalWindow.style.setProperty("--window-height", `${sizing.windowHeight}px`);
+    terminal.style.setProperty("--cols", String(frame.cols));
+    terminal.style.setProperty("--rows", String(frame.rows));
+    terminal.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    frame.lines.forEach((line) => {
+        const row = document.createElement("div");
+        row.className = "terminal-line";
+        line.forEach((segment) => {
+            const span = document.createElement("span");
+            span.textContent = segment.text;
+            applyStyle(span, segment);
+            row.append(span);
+        });
+        fragment.append(row);
+    });
+    terminal.append(fragment);
+}
+function terminalLayout(frame) {
+    const stageBounds = stage.getBoundingClientRect();
+    const cellWidth = 10;
+    const lineHeight = 20;
+    const fontSize = 15;
+    const chromeHeight = 32;
+    const terminalPaddingX = 32;
+    const terminalPaddingY = 32;
+    const naturalWidth = frame.cols * cellWidth + terminalPaddingX;
+    const naturalHeight = chromeHeight + frame.rows * lineHeight + terminalPaddingY;
+    const maxWindowWidth = Math.max(420, stageBounds.width * 0.95);
+    const maxWindowHeight = Math.max(320, stageBounds.height * 0.88);
+    const preferredWidth = Math.max(naturalWidth, stageBounds.width * 0.84);
+    const preferredHeight = Math.max(naturalHeight, stageBounds.height * 0.64);
+    return {
+        cellWidth,
+        lineHeight,
+        fontSize,
+        windowWidth: roundTo(clamp(preferredWidth, Math.min(naturalWidth, maxWindowWidth), maxWindowWidth), 2),
+        windowHeight: roundTo(clamp(preferredHeight, Math.min(naturalHeight, maxWindowHeight), maxWindowHeight), 2)
+    };
+}
+function renderControls(trace, traceTime) {
+    const frames = trace?.frames ?? [];
+    frameRange.max = String(Math.max(0, frames.length - 1));
+    frameRange.value = String(state.frameIndex);
+    const displayTime = traceTime ?? frames[state.frameIndex]?.time ?? 0;
+    frameCounter.value = frames.length > 0 ? `${state.frameIndex + 1} / ${frames.length} | ${formatDuration(displayTime)}` : "0 / 0";
+    playToggle.innerHTML = state.playing ? "&#10074;&#10074;" : "&#9654;";
+    playToggle.setAttribute("aria-label", state.playing ? "Pause" : "Play");
+    previousFrame.disabled = state.frameIndex <= 0;
+    nextFrame.disabled = frames.length === 0 || state.frameIndex >= frames.length - 1;
+    syncProgress(trace, traceTime);
+}
+function renderFrameNotches(trace) {
+    frameNotches.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    const totalDuration = Math.max(1, trace.summary.durationMs);
+    trace.frames.forEach((frame) => {
+        const notch = document.createElement("span");
+        notch.className = `frame-notch${frame.index === state.frameIndex ? " active" : ""}`;
+        notch.style.left = `${clamp((frame.time / totalDuration) * 100, 0, 100)}%`;
+        notch.title = `Frame ${frame.index + 1} at ${formatDuration(frame.time)}`;
+        fragment.append(notch);
+    });
+    trace.annotations.forEach((annotation) => {
+        const marker = document.createElement("span");
+        marker.className = "annotation-marker";
+        marker.style.left = `${progressForTime(trace, annotation.timeMs)}%`;
+        marker.style.backgroundColor = annotation.color ?? colorForAnnotation(annotation);
+        marker.tabIndex = 0;
+        marker.setAttribute("role", "button");
+        marker.setAttribute("aria-label", annotationTooltip(annotation));
+        marker.dataset.tooltip = annotationTooltip(annotation);
+        marker.addEventListener("click", () => {
+            stopPlayback();
+            setFrame(annotation.frameIndex);
+        });
+        fragment.append(marker);
+    });
+    frameNotches.append(fragment);
+}
+function renderTimeline(trace) {
+    timeline.innerHTML = "";
+    const fragment = document.createDocumentFragment();
+    const items = timelineItems(trace, state.frameIndex);
+    items.forEach((item) => {
+        if (item.type === "annotation") {
+            fragment.append(renderAnnotationTimelineItem(item.annotation));
+            return;
+        }
+        const frame = item.frame;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `thumb${frame.index === state.frameIndex ? " active" : ""}`;
+        button.setAttribute("aria-label", `Frame ${frame.index + 1}`);
+        button.addEventListener("pointerdown", rememberPageScroll);
+        button.addEventListener("keydown", rememberPageScroll);
+        button.addEventListener("click", () => {
+            stopPlayback();
+            setFrame(frame.index);
+        });
+        const time = document.createElement("span");
+        time.className = "thumb-time";
+        time.textContent = `${frame.index + 1} | ${formatDuration(frame.time)}`;
+        button.append(time);
+        const frameAnnotations = annotationsForFrame(trace, frame.index);
+        if (frameAnnotations.length > 0) {
+            button.classList.add("has-annotation");
+            button.title = `${frameAnnotations.length} annotation${frameAnnotations.length === 1 ? "" : "s"} near this frame`;
+        }
+        const preview = document.createElement("pre");
+        preview.textContent = thumbnailText(frame);
+        button.append(preview);
+        fragment.append(button);
+    });
+    timeline.append(fragment);
+    centerActiveThumbnail();
+}
+function renderAnnotationTimelineItem(annotation) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `thumb annotation-thumb${annotation.frameIndex === state.frameIndex ? " active" : ""}`;
+    button.setAttribute("aria-label", `Annotation ${annotation.label} at ${formatDuration(annotation.timeMs)}`);
+    button.dataset.tooltip = annotationTooltip(annotation);
+    button.addEventListener("pointerdown", rememberPageScroll);
+    button.addEventListener("keydown", rememberPageScroll);
+    button.addEventListener("click", () => {
+        stopPlayback();
+        setFrame(annotation.frameIndex);
+    });
+    const time = document.createElement("span");
+    time.className = "thumb-time";
+    time.textContent = `Annotation | ${formatDuration(annotation.timeMs)}`;
+    button.append(time);
+    const kind = document.createElement("span");
+    kind.className = "thumb-annotation-kind";
+    kind.style.backgroundColor = annotation.color ?? colorForAnnotation(annotation);
+    kind.textContent = annotation.kind ?? "annotation";
+    button.append(kind);
+    const label = document.createElement("strong");
+    label.className = "thumb-annotation-title";
+    label.textContent = annotation.label;
+    button.append(label);
+    const summary = document.createElement("span");
+    summary.className = "thumb-annotation-summary";
+    summary.textContent = annotationEvidenceCounts(annotation) || (annotation.description ?? `Frame ${annotation.frameIndex + 1}`);
+    button.append(summary);
+    return button;
+}
+function renderDetails(sourceDetails, trace) {
+    details.innerHTML = "";
+    const frame = trace.frames[state.frameIndex];
+    const frameRow = document.createElement("div");
+    frameRow.className = "details-row frame-context";
+    frameRow.append(labelValue("Frame", `${state.frameIndex + 1} / ${trace.frames.length}`));
+    frameRow.append(labelValue("Time", formatDuration(frame?.time ?? 0)));
+    if (frame && frame.eventIndex >= 0) {
+        frameRow.append(labelValue("Trace event", String(frame.eventIndex + 1)));
+    }
+    details.append(frameRow);
+    const fileRow = document.createElement("div");
+    fileRow.className = "details-row";
+    fileRow.append(labelValue("Trace", trace.summary.filePath));
+    if (trace.summary.testFile) {
+        fileRow.append(labelValue("Source", `${trace.summary.testFile}${trace.summary.sourceLine ? `:${trace.summary.sourceLine}` : ""}`));
+    }
+    if (sourceDetails.scopeStartLine && sourceDetails.scopeEndLine) {
+        fileRow.append(labelValue("Test block", `lines ${sourceDetails.scopeStartLine}-${sourceDetails.scopeEndLine}`));
+    }
+    if (trace.summary.attempt != null) {
+        fileRow.append(labelValue("Attempt", String(trace.summary.attempt)));
+    }
+    details.append(fileRow);
+    if (sourceDetails.snapshotFile || sourceDetails.snapshotNames.length > 0) {
+        const snapshotRow = document.createElement("div");
+        snapshotRow.className = "details-row";
+        if (sourceDetails.snapshotFile) {
+            snapshotRow.append(labelValue("Snapshot", sourceDetails.snapshotFile));
+        }
+        if (sourceDetails.snapshotNames.length > 0) {
+            snapshotRow.append(labelValue("Snapshot names", sourceDetails.snapshotNames.join(", ")));
+        }
+        details.append(snapshotRow);
+    }
+    if (trace.annotations.length > 0) {
+        const annotations = document.createElement("div");
+        annotations.className = "annotations";
+        const heading = document.createElement("div");
+        heading.className = "details-heading";
+        heading.textContent = "Annotations for current frame";
+        annotations.append(heading);
+        const currentAnnotations = annotationsForFrame(trace, state.frameIndex);
+        if (currentAnnotations.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "empty";
+            empty.textContent = "No annotations for this frame.";
+            annotations.append(empty);
+        }
+        else {
+            currentAnnotations.forEach((annotation) => {
+                const line = document.createElement("article");
+                line.className = "annotation-detail";
+                const time = document.createElement("code");
+                time.textContent = formatDuration(annotation.timeMs);
+                const label = document.createElement("strong");
+                label.textContent = annotation.label;
+                const meta = document.createElement("div");
+                meta.className = "annotation-meta";
+                meta.append(time, label);
+                if (annotation.kind) {
+                    const kind = document.createElement("span");
+                    kind.className = "annotation-kind";
+                    kind.textContent = annotation.kind;
+                    meta.append(kind);
+                }
+                line.append(meta);
+                if (annotation.description) {
+                    const description = document.createElement("span");
+                    description.className = "annotation-description";
+                    description.textContent = annotation.description;
+                    line.append(description);
+                }
+                renderAnnotationEvidence(annotation, line);
+                annotations.append(line);
+            });
+        }
+        details.append(annotations);
+    }
+    const expectations = document.createElement("div");
+    expectations.className = "expectations";
+    const heading = document.createElement("div");
+    heading.className = "details-heading";
+    heading.textContent = "Assertions for current test";
+    expectations.append(heading);
+    if (sourceDetails.expectations.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "No test expectations or assertions found in this test block.";
+        expectations.append(empty);
+    }
+    else {
+        sourceDetails.expectations.forEach((expectation) => {
+            const line = document.createElement("code");
+            line.className = "expectation";
+            line.textContent = `${expectation.line}: ${expectation.snippet}`;
+            expectations.append(line);
+        });
+    }
+    details.append(expectations);
+}
+function startPlayback() {
+    const trace = currentTrace();
+    if (!trace || trace.frames.length === 0) {
+        return;
+    }
+    if (state.frameIndex >= trace.frames.length - 1) {
+        state.frameIndex = 0;
+        renderFrame(trace, 0);
+    }
+    state.playing = true;
+    anchorPlayback(trace.frames[state.frameIndex].time, performance.now());
+    renderControls(trace, state.playbackAnchorTraceTime);
+    state.animationFrame = window.requestAnimationFrame(playbackTick);
+}
+function playbackTick(now) {
+    const trace = currentTrace();
+    if (!trace || !state.playing) {
+        return;
+    }
+    const traceTime = clamp(currentPlaybackTraceTime(now), 0, trace.summary.durationMs);
+    renderPlaybackAt(trace, traceTime);
+    if (traceTime >= trace.summary.durationMs) {
+        stopPlayback();
+        renderControls(trace);
+        return;
+    }
+    state.animationFrame = window.requestAnimationFrame(playbackTick);
+}
+function stopPlayback() {
+    state.playing = false;
+    if (state.animationFrame != null) {
+        window.cancelAnimationFrame(state.animationFrame);
+        state.animationFrame = undefined;
+    }
+    syncProgress(currentTrace());
+}
+function setFrame(index) {
+    const trace = currentTrace();
+    if (!trace) {
+        return;
+    }
+    state.frameIndex = clamp(index, 0, trace.frames.length - 1);
+    state.followTail = state.frameIndex >= trace.frames.length - 1;
+    render();
+    restorePageScroll();
+}
+function renderPlaybackAt(trace, traceTime) {
+    const frameIndex = frameIndexAtTime(trace.frames, traceTime);
+    if (frameIndex !== state.frameIndex) {
+        renderFrame(trace, frameIndex);
+    }
+    else {
+        renderControls(trace, traceTime);
+    }
+}
+function renderFrame(trace, frameIndex) {
+    state.frameIndex = clamp(frameIndex, 0, trace.frames.length - 1);
+    state.followTail = state.frameIndex >= trace.frames.length - 1;
+    renderTerminal(trace.frames[state.frameIndex]);
+    renderControls(trace);
+    renderFrameNotches(trace);
+    renderTimeline(trace);
+    renderDetails(trace.details, trace);
+}
+function currentTrace() {
+    return state.model?.traces[state.traceIndex];
+}
+function traceKey(trace) {
+    return `${trace.summary.filePath}\n${trace.summary.testTitle}\n${trace.summary.attempt ?? ""}`;
+}
+function traceSourceValue(trace, traces = state.model?.traces ?? []) {
+    const duplicateSources = traces.filter((candidate) => candidate.summary.filePath === trace.summary.filePath).length > 1;
+    return duplicateSources ? traceKey(trace) : trace.summary.filePath;
+}
+function traceSourceCandidates(trace, traces = state.model?.traces ?? []) {
+    return [traceSourceValue(trace, traces), traceKey(trace), trace.summary.filePath, trace.summary.id, trace.summary.testTitle, trace.summary.fileName];
+}
+function applyTraceSelectionFromUrl() {
+    const traces = state.model?.traces ?? [];
+    const source = new URL(window.location.href).searchParams.get(sourceQueryParam);
+    if (!source || traces.length === 0) {
+        return false;
+    }
+    const index = traces.findIndex((trace) => traceSourceCandidates(trace, traces).includes(source));
+    if (index < 0 || index === state.traceIndex) {
+        return false;
+    }
+    state.traceIndex = index;
+    return true;
+}
+function writeSelectedTraceToUrl(mode) {
+    const trace = currentTrace();
+    const url = new URL(window.location.href);
+    if (trace) {
+        url.searchParams.set(sourceQueryParam, traceSourceValue(trace));
+    }
+    else {
+        url.searchParams.delete(sourceQueryParam);
+    }
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next === current) {
+        return;
+    }
+    const stateUpdate = mode === "push" ? window.history.pushState : window.history.replaceState;
+    stateUpdate.call(window.history, null, "", next);
+}
+function modelSignature(model) {
+    return model.traces
+        .map((trace) => {
+        const lastFrame = trace.frames.at(-1);
+        return [
+            trace.summary.filePath,
+            trace.summary.testTitle,
+            trace.summary.attempt ?? "",
+            trace.summary.frameCount,
+            trace.summary.durationMs,
+            trace.summary.rows,
+            trace.summary.cols,
+            lastFrame?.plainText ?? "",
+            trace.annotations
+                .map((annotation) => `${annotation.id}:${annotation.timeMs}:${annotation.frameIndex}:${annotation.kind ?? ""}:${annotation.color ?? ""}:${annotation.label}:${annotation.description ?? ""}:${JSON.stringify(annotation.assertions)}:${JSON.stringify(annotation.attachments)}`)
+                .join("\u001d")
+        ].join("\u001f");
+    })
+        .join("\u001e");
+}
+function applyStyle(span, segment) {
+    if (segment.fg)
+        span.style.color = segment.fg;
+    if (segment.bg)
+        span.style.backgroundColor = segment.bg;
+    if (segment.bold)
+        span.style.fontWeight = "700";
+    if (segment.dim)
+        span.style.opacity = "0.72";
+    if (segment.italic)
+        span.style.fontStyle = "italic";
+    if (segment.underline)
+        span.style.textDecoration = "underline";
+    if (segment.cursor)
+        span.classList.add("cursor");
+}
+function thumbnailText(frame) {
+    const lines = frame.plainText.split("\n").slice(0, 6);
+    return lines.map((line) => line.slice(0, 28)).join("\n") || " ";
+}
+function colorForAnnotation(annotation) {
+    switch (annotation.kind) {
+        case "oauth":
+            return "#2f7d62";
+        case "user":
+            return "#8a5cf6";
+        case "assertion":
+            return "#b7791f";
+        default:
+            return "#2664d8";
+    }
+}
+function annotationTooltip(annotation) {
+    const lines = [`${formatDuration(annotation.timeMs)} · ${annotation.label}`];
+    if (annotation.description) {
+        lines.push(annotation.description);
+    }
+    const counts = annotationEvidenceCounts(annotation);
+    if (counts) {
+        lines.push(counts);
+    }
+    for (const assertion of annotation.assertions.slice(0, 3)) {
+        lines.push(`assert: ${assertion.label}${assertion.passed == null ? "" : assertion.passed ? " passed" : " failed"}`);
+    }
+    return lines.join("\n");
+}
+function annotationEvidenceCounts(annotation) {
+    const attachmentCount = annotation.attachments.length + annotation.assertions.reduce((count, assertion) => count + (assertion.attachments?.length ?? 0), 0);
+    const parts = [];
+    if (annotation.assertions.length > 0) {
+        parts.push(`${annotation.assertions.length} assert${annotation.assertions.length === 1 ? "" : "s"}`);
+    }
+    if (attachmentCount > 0) {
+        parts.push(`${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`);
+    }
+    return parts.join(" · ");
+}
+function renderAnnotationEvidence(annotation, parent) {
+    if (annotation.assertions.length === 0 && annotation.attachments.length === 0) {
+        return;
+    }
+    const evidence = document.createElement("div");
+    evidence.className = "annotation-evidence";
+    annotation.assertions.forEach((assertion) => {
+        const row = document.createElement("div");
+        row.className = `annotation-assertion${assertion.passed === false ? " failed" : assertion.passed === true ? " passed" : ""}`;
+        const label = document.createElement("strong");
+        label.textContent = assertion.label;
+        row.append(label);
+        if (assertion.message) {
+            const message = document.createElement("span");
+            message.textContent = assertion.message;
+            row.append(message);
+        }
+        if (assertion.expected || assertion.actual) {
+            const comparison = document.createElement("code");
+            comparison.textContent = [assertion.expected ? `expected: ${assertion.expected}` : "", assertion.actual ? `actual: ${assertion.actual}` : ""]
+                .filter(Boolean)
+                .join(" | ");
+            row.append(comparison);
+        }
+        evidence.append(row);
+        (assertion.attachments ?? []).forEach((attachment) => appendAttachment(evidence, attachment));
+    });
+    annotation.attachments.forEach((attachment) => appendAttachment(evidence, attachment));
+    if (evidence.childElementCount > 0) {
+        parent.append(evidence);
+    }
+}
+function appendAttachment(parent, attachment) {
+    const rendered = renderAttachment(attachment);
+    if (rendered) {
+        parent.append(rendered);
+    }
+}
+function renderAttachment(attachment) {
+    const href = attachmentHref(attachment);
+    if (!href) {
+        return undefined;
+    }
+    const wrapper = document.createElement("a");
+    wrapper.className = "annotation-attachment";
+    wrapper.href = href;
+    wrapper.target = attachment.url ? "_blank" : "_self";
+    wrapper.rel = "noreferrer";
+    if (isImageAttachment(attachment)) {
+        const image = document.createElement("img");
+        image.src = wrapper.href;
+        image.alt = attachment.label ?? attachment.description ?? "Annotation attachment";
+        wrapper.append(image);
+    }
+    const label = document.createElement("span");
+    label.textContent = attachment.label ?? attachment.path?.split(/[\\/]/).at(-1) ?? attachment.url ?? "Attachment";
+    wrapper.append(label);
+    if (attachment.description) {
+        const description = document.createElement("small");
+        description.textContent = attachment.description;
+        wrapper.append(description);
+    }
+    return wrapper;
+}
+function attachmentHref(attachment) {
+    if (attachment.url) {
+        return attachment.url;
+    }
+    if (!attachment.path) {
+        return undefined;
+    }
+    return `/api/annotation-attachment?path=${encodeURIComponent(attachment.path ?? "")}`;
+}
+function isImageAttachment(attachment) {
+    if (!attachment.path && !attachment.url) {
+        return false;
+    }
+    if (attachment.mimeType?.startsWith("image/")) {
+        return true;
+    }
+    return /\.(png|jpe?g|gif|webp|svg)$/i.test(attachment.path ?? attachment.url ?? "");
+}
+function centerActiveThumbnail() {
+    const active = timeline.querySelector(".thumb.active");
+    const strip = timeline.parentElement;
+    if (!active || !strip) {
+        return;
+    }
+    window.requestAnimationFrame(() => {
+        const left = active.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
+        strip.scrollTo({
+            left: Math.max(0, left),
+            behavior: state.playing ? "auto" : "smooth"
+        });
+    });
+}
+function labelValue(label, value) {
+    const wrapper = document.createElement("span");
+    const strong = document.createElement("strong");
+    strong.textContent = `${label}: `;
+    const code = document.createElement("code");
+    code.textContent = value;
+    wrapper.append(strong, code);
+    return wrapper;
+}
+function formatDuration(ms) {
+    if (ms < 1000) {
+        return `${Math.round(ms)}ms`;
+    }
+    return `${(ms / 1000).toFixed(2)}s`;
+}
+function compactPath(filePath) {
+    const parts = filePath.split(/[\\/]/).filter(Boolean);
+    return parts.slice(-3).join("/");
+}
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+function roundTo(value, places) {
+    const factor = 10 ** places;
+    return Math.round(value * factor) / factor;
+}
+function syncProgress(trace, traceTime) {
+    frameProgress.style.transitionDuration = state.playing ? "0ms" : "160ms";
+    frameProgress.style.width = `${traceTime == null ? progressForFrame(trace, state.frameIndex) : progressForTime(trace, traceTime)}%`;
+}
+function anchorPlayback(traceTime, now) {
+    state.playbackAnchorRealTime = now;
+    state.playbackAnchorTraceTime = traceTime;
+}
+function currentPlaybackTraceTime(now) {
+    return state.playbackAnchorTraceTime + (now - state.playbackAnchorRealTime) * state.speed;
+}
+function progressForFrame(trace, frameIndex) {
+    const frames = trace?.frames ?? [];
+    if (frames.length === 0) {
+        return 0;
+    }
+    const frame = frames[clamp(frameIndex, 0, frames.length - 1)];
+    const duration = trace?.summary.durationMs ?? 0;
+    if (duration > 0) {
+        return roundTo(clamp((frame.time / duration) * 100, 0, 100), 3);
+    }
+    return roundTo(clamp((frame.index / Math.max(1, frames.length - 1)) * 100, 0, 100), 3);
+}
+function progressForTime(trace, traceTime) {
+    const duration = trace?.summary.durationMs ?? 0;
+    if (duration <= 0) {
+        return progressForFrame(trace, state.frameIndex);
+    }
+    return roundTo(clamp((traceTime / duration) * 100, 0, 100), 3);
+}
+function rememberPageScroll() {
+    pageScrollBeforeInteraction = { left: window.scrollX, top: window.scrollY };
+}
+function restorePageScroll() {
+    const scroll = pageScrollBeforeInteraction ?? { left: 0, top: 0 };
+    const target = scroll.top > 0 ? { left: 0, top: 0 } : scroll;
+    const applyScroll = () => {
+        window.scrollTo(target.left, target.top);
+    };
+    window.requestAnimationFrame(applyScroll);
+    window.setTimeout(applyScroll, 0);
+    pageScrollBeforeInteraction = undefined;
+}
+function requiredElement(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        throw new Error(`Missing element: ${id}`);
+    }
+    return element;
+}
+</script>
+  </body>
+</html>
