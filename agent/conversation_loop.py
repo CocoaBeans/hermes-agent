@@ -31,6 +31,7 @@ from agent.codex_responses_adapter import _summarize_user_message_for_log
 from agent.display import KawaiiSpinner
 from agent.error_classifier import FailoverReason, classify_api_error
 from agent.iteration_budget import IterationBudget
+from agent.loop_detector import LoopDetector, create_loop_detector
 from agent.turn_context import build_turn_context
 from agent.turn_retry_state import TurnRetryState
 from agent.memory_manager import build_memory_context_block
@@ -444,6 +445,12 @@ def run_conversation(
     compression_attempts = 0
     _turn_exit_reason = "unknown"  # Diagnostic: why the loop ended
 
+    # Loop detector — recognise when the model repeats the same pattern
+    # without making progress, so we can break early instead of burning
+    # all 90 iterations.  Reset at the start of each turn.
+    _loop_detector = create_loop_detector()
+    _loop_detector.reset()
+
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
     # turn to the codex app-server subprocess (terminal/file ops/patching
     # all run inside Codex). Default Hermes path is bypassed entirely.
@@ -473,6 +480,26 @@ def run_conversation(
         api_call_count += 1
         agent._api_call_count = api_call_count
         agent._touch_activity(f"starting API call #{api_call_count}")
+
+        # Check for logic loops — break early if the model repeats the
+        # same pattern without making progress.
+        _loop_result = _loop_detector.check_for_loop()
+        if _loop_result.detected:
+            _turn_exit_reason = f"loop_detected(pattern={_loop_result.repeat_count}x)"
+            if not agent.quiet_mode:
+                agent._safe_print(f"\n{agent.log_prefix}{_loop_result.user_message}")
+                for suggestion in _loop_result.recovery_suggestions:
+                    agent._safe_print(f"   💡 {suggestion}")
+            agent._persist_session(messages, conversation_history)
+            return {
+                "final_response": _loop_result.user_message,
+                "messages": messages,
+                "api_calls": api_call_count,
+                "completed": False,
+                "loop_detected": True,
+                "pattern": _loop_result.pattern,
+                "error": f"Loop detected: {_loop_result.pattern}",
+            }
 
         # Grace call: the budget is exhausted but we gave the model one
         # more chance.  Consume the grace flag so the loop exits after
@@ -3830,7 +3857,25 @@ def run_conversation(
                 
                 # Save session log incrementally (so progress is visible even if interrupted)
                 agent._session_messages = messages
-                
+
+                # Record iteration fingerprint for loop detection.
+                # Track whether this iteration made meaningful progress
+                # (new messages beyond what we had before, compression, etc.).
+                _prev_msg_count = len(messages) - 1  # subtract the assistant_msg we just appended
+                _last_count = getattr(agent, '_last_message_count', 0)
+                _loop_detector.record_iteration(
+                    tool_calls=list(assistant_message.tool_calls) if assistant_message.tool_calls else [],
+                    assistant_message=assistant_message,
+                    final_response=None,  # tool path — no final text yet
+                    state_changed=_prev_msg_count > _last_count,
+                    message_count=_prev_msg_count,
+                    compressed=(
+                        agent.compression_enabled
+                        and _compressor.should_compress(_real_tokens)
+                    ),
+                )
+                agent._last_message_count = _prev_msg_count
+
                 # Continue loop for next response
                 continue
             
@@ -4164,7 +4209,20 @@ def run_conversation(
                     messages.pop()
 
                 messages.append(final_msg)
-                
+
+                # Record final iteration fingerprint for loop detection.
+                _final_msg_count = len(messages)
+                _final_last_count = getattr(agent, '_last_message_count', 0)
+                _loop_detector.record_iteration(
+                    tool_calls=[],  # final response — no tool calls
+                    assistant_message=assistant_message,
+                    final_response=final_response,
+                    state_changed=_final_msg_count > _final_last_count,
+                    message_count=_final_msg_count,
+                    compressed=False,
+                )
+                agent._last_message_count = _final_msg_count
+
                 _turn_exit_reason = f"text_response(finish_reason={finish_reason})"
                 if not agent.quiet_mode:
                     agent._safe_print(f"🎉 Conversation completed after {api_call_count} OpenAI-compatible API call(s)")
