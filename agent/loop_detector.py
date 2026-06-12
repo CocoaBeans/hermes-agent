@@ -18,7 +18,6 @@ structured error so the user can recover instead of burning all 90 iterations.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -279,6 +278,10 @@ class LoopDetector:
             # all repetitions of this pattern.
             if not had_state_change:
                 pattern_str = _fingerprint_to_pattern(fp)
+                logger.warning(
+                    "Loop detected: %s (repeated %dx within window %d)",
+                    pattern_str, count, self.window,
+                )
                 return LoopDetectionResult(
                     detected=True,
                     pattern=pattern_str,
@@ -314,7 +317,7 @@ def create_loop_detector(
     enabled: Optional[bool] = None,
 ) -> LoopDetector:
     """Create a LoopDetector with defaults from config or sensible fallbacks."""
-    from utils import env_bool, env_int
+    from utils import env_int
 
     # Config precedence: explicit args > env vars > defaults.
     if window is None:
