@@ -71,6 +71,50 @@ logger = logging.getLogger(__name__)
 INTERRUPT_WAITING_FOR_MODEL_PREFIX = "Operation interrupted: waiting for model response ("
 
 
+def _apply_failure_correction(agent: Any, messages: List[Dict[str, Any]]) -> None:
+    """Check the failure tracker for detected patterns and inject corrections.
+
+    After tool execution, this checks whether the failure tracker has
+    detected a repeating failure pattern. If so, it injects a compact
+    correction nudge into the conversation (either into the last
+    assistant message, or as a synthetic user message as fallback).
+
+    This is a no-op if the agent has no failure tracker attached.
+    """
+    tracker = getattr(agent, "_failure_tracker", None)
+    if tracker is None:
+        return
+
+    pattern = tracker.check_for_pattern()
+    if pattern is None:
+        return
+
+    correction = tracker.generate_correction(pattern)
+    if not correction.active:
+        return
+
+    # Decide injection method: primary (into assistant message) or
+    # fallback (synthetic user message).  If the last message is a user
+    # message, skip injection entirely to avoid two consecutive user
+    # messages (which breaks role alternation).
+    if should_use_fallback(messages):
+        # Check if the last message is a user message — if so, skip
+        # injection entirely rather than creating two consecutive user
+        # messages.
+        last_msg = messages[-1] if messages else None
+        if not (isinstance(last_msg, dict) and last_msg.get("role") == "user"):
+            inject_correction_as_user_message(messages, correction)
+    else:
+        inject_correction_into_assistant_message(messages, correction)
+
+    logger.info(
+        "Failure correction injected: %s (pattern: %s, %d repeats)",
+        correction.tool_name,
+        correction.error_category,
+        pattern.repeat_count,
+    )
+
+
 def _ollama_context_limit_error(agent: Any, request_tokens: int) -> Optional[str]:
     """Return a user-facing error when Ollama is loaded with too little context."""
     if not getattr(agent, "tools", None):
