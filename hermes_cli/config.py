@@ -1140,6 +1140,15 @@ DEFAULT_CONFIG = {
         },
     },
 
+    # Logic loop detection — flags when the agent repeats the same
+    # tool-call/response pattern without making progress.  Soft warnings
+    # are always-on by default; hard stops are opt-in.
+    "loop_detection": {
+        "enabled": True,
+        "window": 10,              # iterations to look back for patterns
+        "repeat_threshold": 3,     # same fingerprint this many times = loop
+    },
+
     "compression": {
         "enabled": True,
         "threshold": 0.50,            # compress when context usage exceeds this ratio

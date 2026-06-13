@@ -174,7 +174,6 @@ export function ChatBar({
   const queuedPromptsBySession = useStore($queuedPromptsBySession)
   const statusItemsBySession = useStore($statusItemsBySession)
   const scrolledUp = useStore($threadScrolledUp)
-  const sessionMessages = useStore($messages)
   const activeQueueSessionKey = queueSessionKey || sessionId || null
 
   const queuedPrompts = useMemo(
@@ -866,7 +865,9 @@ export function ChatBar({
       event.preventDefault()
       triggerKeyConsumedRef.current = true
 
-      const history = deriveUserHistory(sessionMessages, chatMessageText)
+      // $messages is read imperatively (not subscribed) so the composer
+      // doesn't re-render on every streaming delta flush.
+      const history = deriveUserHistory($messages.get(), chatMessageText)
       const entry = browseBackward(sessionId, currentDraft, history)
 
       if (entry !== null) {
@@ -891,7 +892,7 @@ export function ChatBar({
         event.preventDefault()
         triggerKeyConsumedRef.current = true
 
-        const history = deriveUserHistory(sessionMessages, chatMessageText)
+        const history = deriveUserHistory($messages.get(), chatMessageText)
         const result = browseForward(sessionId, history)
 
         if (result !== null) {
@@ -1741,7 +1742,6 @@ export function ChatBar({
                 'group/composer-surface relative z-4 isolate rounded-[inherit] border border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(18%*var(--composer-ring-strength)),var(--dt-input))] transition-[border-color] duration-200 ease-out focus-within:border-[color-mix(in_srgb,var(--dt-composer-ring)_calc(45%*var(--composer-ring-strength)),transparent)]',
                 COMPOSER_DROP_FADE_CLASS,
                 'group-has-data-[state=open]/composer:border-t-transparent',
-                'group-data-[status-stack]/composer:border-t-transparent',
                 dragActive && COMPOSER_DROP_ACTIVE_CLASS
               )}
               data-slot="composer-surface"
