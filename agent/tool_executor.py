@@ -526,6 +526,14 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             is_error, _ = _detect_tool_failure(function_name, result)
             if is_error:
                 logger.info("tool %s failed (%.2fs): %s", function_name, duration, result[:200])
+                # Record the failure in the tracker for pattern detection.
+                try:
+                    tracker = getattr(agent, "_failure_tracker", None)
+                    if tracker is not None:
+                        tracker.record_failure(function_name, function_args, result)
+                except Exception:
+                    # Never let tracking failures break tool execution.
+                    pass
             else:
                 logger.info("tool %s completed (%.2fs, %d chars)", function_name, duration, len(result))
             results[index] = (function_name, function_args, result, duration, is_error, False, middleware_trace)
@@ -1319,6 +1327,14 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             )
         if _is_error_result:
             logger.warning("Tool %s returned error (%.2fs): %s", function_name, tool_duration, result_preview)
+            # Record the failure in the tracker for pattern detection.
+            try:
+                tracker = getattr(agent, "_failure_tracker", None)
+                if tracker is not None:
+                    tracker.record_failure(function_name, function_args, function_result)
+            except Exception:
+                # Never let tracking failures break tool execution.
+                pass
         else:
             logger.info("tool %s completed (%.2fs, %d chars)", function_name, tool_duration, _result_len)
 

@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional
 
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY,
+    FAILURE_CORRECTION_GUIDANCE,
     GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     HERMES_AGENT_HELP_GUIDANCE,
     KANBAN_GUIDANCE,
@@ -131,6 +132,14 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         tool_guidance.append(KANBAN_GUIDANCE)
     if tool_guidance:
         stable_parts.append(" ".join(tool_guidance))
+
+    # Failure-correction guidance: tells the model how to respond when it
+    # sees a `[FAILURE CORRECTION: ...]` marker in its own previous message
+    # or a synthetic user message.  Injected unconditionally — it's just
+    # guidance text and doesn't break anything if the tracker is absent.
+    # The tracker is attached per-turn in run_conversation(), so checking
+    # at system-prompt-build time (once per session) would always see None.
+    stable_parts.append(FAILURE_CORRECTION_GUIDANCE)
 
     # Steering only lands inside tool results, so it's only reachable when the
     # agent has tools. Static text → byte-stable prompt (no cache hit).
