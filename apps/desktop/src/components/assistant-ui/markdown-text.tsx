@@ -8,7 +8,7 @@ import {
   tailBoundedRemend
 } from '@assistant-ui/react-streamdown'
 import type { code as streamdownCode } from '@streamdown/code'
-import { type ComponentProps, isValidElement, memo, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ComponentProps, type ElementType, isValidElement, memo, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { defaultRemarkPlugins } from 'streamdown'
 
 import { ExpandableBlock } from '@/components/chat/expandable-block'
@@ -277,6 +277,16 @@ function flattenChildrenToText(node: unknown): string {
 
   return ''
 }
+
+/**
+ * react-markdown hands every component override its hast `node` alongside the
+ * element props. An override that spreads its props onto a DOM element must
+ * pull `node` out first: React otherwise serialises it as a `node="[object
+ * Object]"` attribute, and because the hast node is a fresh object on every
+ * render, the attribute is rewritten on every streamed chunk — a DOM
+ * mutation per paragraph, list and heading, for nothing anyone can see.
+ */
+type MarkdownElementProps<T extends ElementType> = ComponentProps<T> & { node?: unknown }
 
 function MarkdownLink({ children, className, href, ...props }: ComponentProps<'a'>) {
   const mediaPath = mediaPathFromMarkdownHref(href)
@@ -637,19 +647,19 @@ function MarkdownTextSurface({
   const components = useMemo(
     () =>
       ({
-        h1: ({ className, ...props }: ComponentProps<'h1'>) => (
+        h1: ({ className, node: _node, ...props }: MarkdownElementProps<'h1'>) => (
           <h1 className={cn('my-1 font-semibold', HEADING_SIZES.h1, className)} {...props} />
         ),
-        h2: ({ className, ...props }: ComponentProps<'h2'>) => (
+        h2: ({ className, node: _node, ...props }: MarkdownElementProps<'h2'>) => (
           <h2 className={cn('my-1 font-semibold', HEADING_SIZES.h2, className)} {...props} />
         ),
-        h3: ({ className, ...props }: ComponentProps<'h3'>) => (
+        h3: ({ className, node: _node, ...props }: MarkdownElementProps<'h3'>) => (
           <h3 className={cn('my-1 font-semibold', HEADING_SIZES.h3, className)} {...props} />
         ),
-        h4: ({ className, ...props }: ComponentProps<'h4'>) => (
+        h4: ({ className, node: _node, ...props }: MarkdownElementProps<'h4'>) => (
           <h4 className={cn('my-1 font-semibold', HEADING_SIZES.h4, className)} {...props} />
         ),
-        p: ({ children, ...props }: ComponentProps<'p'>) =>
+        p: ({ children, node: _node, ...props }: MarkdownElementProps<'p'>) =>
           previewOnly ? (
             <p {...props}>{decorateText ? decorateText(children) : children}</p>
           ) : (
@@ -663,7 +673,7 @@ function MarkdownTextSurface({
         // mirroring the CSS isolate that already keeps it out of the
         // plaintext scan. Fenced code never reaches this override; it goes
         // through the code plugin's CodeCard path.
-        inlineCode: ({ className, ...props }: ComponentProps<'code'>) => (
+        inlineCode: ({ className, node: _node, ...props }: MarkdownElementProps<'code'>) => (
           <code className={className} dir="ltr" {...props} />
         ),
         // `---` as quiet spacing, not a heavy full-width rule.
@@ -679,7 +689,7 @@ function MarkdownTextSurface({
         // contract as the CSS isolate.
         // A `> [!NOTE]`/`[!WARNING]`/... blockquote renders as a GFM alert
         // callout; everything else stays a plain quote.
-        blockquote: ({ children, className, ...props }: ComponentProps<'blockquote'>) => {
+        blockquote: ({ children, className, node: _node, ...props }: MarkdownElementProps<'blockquote'>) => {
           const alert = extractAlert(children)
 
           if (alert) {
@@ -696,13 +706,13 @@ function MarkdownTextSurface({
             </blockquote>
           )
         },
-        ul: ({ className, ...props }: ComponentProps<'ul'>) => (
+        ul: ({ className, node: _node, ...props }: MarkdownElementProps<'ul'>) => (
           <ul className={cn('my-1 gap-0', className)} dir={boxDir} {...props} />
         ),
-        ol: ({ className, ...props }: ComponentProps<'ol'>) => (
+        ol: ({ className, node: _node, ...props }: MarkdownElementProps<'ol'>) => (
           <ol className={cn('my-1 gap-0', className)} dir={boxDir} {...props} />
         ),
-        li: ({ children, className, ...props }: ComponentProps<'li'>) => (
+        li: ({ children, className, node: _node, ...props }: MarkdownElementProps<'li'>) => (
           <li className={cn('leading-(--dt-line-height)', className)} {...props}>
             {decorateText ? decorateText(children) : children}
           </li>
@@ -711,11 +721,11 @@ function MarkdownTextSurface({
         // (see markdown-table-widths.ts) so a new turn or a session switch
         // doesn't undo a resize.
         table: ResizableMarkdownTable,
-        thead: ({ className, ...props }: ComponentProps<'thead'>) => (
+        thead: ({ className, node: _node, ...props }: MarkdownElementProps<'thead'>) => (
           <thead className={cn('m-0 bg-muted/35 text-muted-foreground', className)} {...props} />
         ),
         th: ResizableMarkdownTh,
-        td: ({ children, className, ...props }: ComponentProps<'td'>) => (
+        td: ({ children, className, node: _node, ...props }: MarkdownElementProps<'td'>) => (
           <td
             className={cn(
               'px-2.5 py-1.5 align-top text-[length:var(--conversation-text-font-size)] leading-snug',
