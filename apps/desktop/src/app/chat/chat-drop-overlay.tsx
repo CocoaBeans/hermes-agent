@@ -26,8 +26,13 @@ export function ChatDropOverlay({ kind }: { kind: DragKind }) {
     <div
       aria-hidden
       className={cn(
-        'pointer-events-none absolute inset-0 z-40 flex items-center justify-center transition-opacity duration-150 ease-out',
-        kind ? 'opacity-100' : 'opacity-0'
+        'pointer-events-none absolute inset-0 z-40 flex items-center justify-center transition-[opacity,visibility] duration-150 ease-out',
+        // `invisible` as well as transparent while idle: the sheet below carries
+        // a backdrop-filter, and a transparent ancestor does not stop the
+        // compositor from re-blurring the full pane behind it on every frame
+        // the transcript changes. visibility transitions as `visible` for the
+        // whole duration, so the fade-out still plays before the sheet drops.
+        kind ? 'visible opacity-100' : 'invisible opacity-0'
       )}
       data-slot="chat-drop-overlay"
     >
