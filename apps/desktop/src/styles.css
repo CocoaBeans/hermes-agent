@@ -137,6 +137,15 @@
 }
 
 @theme inline {
+  /* Tailwind's default is `spin 1s linear infinite`. A linear spin changes
+     every vsync, and one running loader — the statusbar's "subagents
+     running" item spins for a whole turn — keeps the compositor producing
+     frames at the display rate (121/s on ProMotion) for the entire window.
+     Pausing that one 16px icon mid-turn dropped the renderer ~9 points and
+     the GPU process ~7; stepping it to 40 updates a second (9° per step,
+     not visible on a 12–16px glyph) kept nearly all of that. Same frame-rate
+     cap as the sidebar arc and the streaming glow. */
+  --animate-spin: spin 1s steps(40) infinite;
   --color-background: var(--dt-background);
   --color-foreground: var(--dt-foreground);
   --color-card: var(--dt-card);
