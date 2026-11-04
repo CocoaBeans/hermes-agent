@@ -1,0 +1,8 @@
+name: self-correction
+version: "0.1.0"
+description: "Detects tool-level failures and injects correction nudges to help the model break out of repeating failure patterns. Uses transform_tool_result to append correction guidance to error results, and pre_llm_call to inject failure-pattern summaries into user messages. Configurable via HERMES_SELF_CORRECTION_WINDOW and HERMES_SELF_CORRECTION_REPEAT_THRESHOLD env vars."
+author: "NousResearch"
+hooks:
+  - transform_tool_result
+  - pre_llm_call
+  - post_tool_call
